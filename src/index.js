@@ -105,7 +105,7 @@ app.post("/create-order", async (req, res) => {
       merchantTransactionId: txnId,
       merchantUserId: "USER123" || userId,
       amount: amount * 100,
-      redirectUrl: "divya-bliss://payment-result",
+      redirectUrl: `divya-bliss://payment-result?txnId=${txnId}`,
       callbackUrl: `${SERVER_URL}/webhook`,
       paymentInstrument: { type: "PAY_PAGE" }
     };
