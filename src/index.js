@@ -105,7 +105,7 @@ app.post("/create-order", async (req, res) => {
       merchantTransactionId: txnId,
       merchantUserId: "USER123" || userId,
       amount: amount * 100,
-      //redirectUrl: `${SERVER_URL}/redirect`,
+      redirectUrl: "divya-bliss://payment-result",
       callbackUrl: `${SERVER_URL}/webhook`,
       paymentInstrument: { type: "PAY_PAGE" }
     };
@@ -172,86 +172,97 @@ const response = await axios.post(
 // ✅ VERIFY PAYMENT (STATUS CHECK)
 app.get("/verify-payment/:txnId", async (req, res) => {
   try {
-    console.log("🔵 VERIFY STEP 1");
-
     const txnId = req.params.txnId;
-    console.log("🔵 STEP 2: txnId =", txnId);
 
     const endpoint = `/pg/v1/status/${MERCHANT_ID}/${txnId}`;
-    console.log("🔵 STEP 3: endpoint =", endpoint);
 
     const stringToHash = endpoint + SALT_KEY;
-    console.log("🔵 STEP 4: stringToHash =", stringToHash);
 
-    const hash = crypto.createHash("sha256").update(stringToHash).digest("hex");
-    console.log("🔵 STEP 5: hash =", hash);
+    const hash = crypto
+      .createHash("sha256")
+      .update(stringToHash)
+      .digest("hex");
 
     const checksum = hash + "###" + SALT_INDEX;
-    console.log("🔵 STEP 6: checksum =", checksum);
 
     const url = `${BASE_URL}${endpoint}`;
-    console.log("🔵 STEP 7: URL =", url);
 
     const response = await axios.get(url, {
       headers: {
         "X-VERIFY": checksum,
-        "X-MERCHANT-ID": MERCHANT_ID
-      }
+        "X-MERCHANT-ID": MERCHANT_ID,
+      },
     });
 
-    console.log("🟢 STEP 8: Response =", response.data);
+    const status = response.data?.data?.state;
 
-    res.json(response.data);
+    // Normalize status
+    let finalStatus = "PENDING";
+    if (status === "COMPLETED" || status === "SUCCESS") {
+      finalStatus = "SUCCESS";
+    } else if (status === "FAILED") {
+      finalStatus = "FAILED";
+    }
 
-  } catch (e) {
-    console.log("❌ VERIFY ERROR");
-    console.log(e.response?.data || e.message);
+    // Update Firebase
+    const userSnap = await db.collectionGroup("orders")
+      .where("txnId", "==", txnId)
+      .get();
 
-    res.status(500).json(e.response?.data || { error: e.message });
+    userSnap.forEach(async (doc) => {
+      await doc.ref.update({
+        status: finalStatus,
+        rawStatus: status,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    res.json({
+      txnId,
+      status: finalStatus,
+      raw: response.data,
+    });
+
+  } catch (err) {
+    console.log("VERIFY ERROR:", err.response?.data || err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 app.post("/webhook", async (req, res) => {
   try {
-    console.log("🔵 WEBHOOK HIT");
-
     const body = req.body;
 
-    console.log("🔵 RAW BODY:", JSON.stringify(body, null, 2));
-
-    const merchantTxnId =
+    const txnId =
       body?.payload?.payment?.entity?.merchantTransactionId;
 
     const status =
       body?.payload?.payment?.entity?.state;
 
-    const merchantUserId =
+    const userId =
       body?.payload?.payment?.entity?.merchantUserId;
 
-    console.log("🔵 txnId =", merchantTxnId);
-    console.log("🔵 status =", status);
-    console.log("🔵 userId =", merchantUserId);
+    if (!txnId) return res.status(400).send("Invalid");
 
-    if (!merchantTxnId) {
-      console.log("❌ Invalid webhook payload");
-      return res.status(400).send("Invalid");
-    }
+    let finalStatus = "PENDING";
+
+    if (status === "SUCCESS") finalStatus = "SUCCESS";
+    else if (status === "FAILED") finalStatus = "FAILED";
 
     await db.collection("users")
-      .doc(merchantUserId)
+      .doc(userId)
       .collection("orders")
-      .doc(merchantTxnId)
-      .update({
-        paymentStatus: status
-      });
+      .doc(txnId)
+      .set({
+        status: finalStatus,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
 
-    console.log("🟢 DB UPDATED SUCCESSFULLY");
+    console.log("WEBHOOK UPDATED:", txnId, finalStatus);
 
     res.sendStatus(200);
 
-  } catch (e) {
-    console.log("❌ WEBHOOK ERROR");
-    console.log(e.message);
-
+  } catch (err) {
+    console.log("WEBHOOK ERROR:", err.message);
     res.sendStatus(500);
   }
 });
