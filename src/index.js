@@ -59,6 +59,7 @@ console.log("verify paymet sigature expected", expectedSignature)
 });
 
 app.listen(5000, () => console.log("Server running on port 5000"));*/
+//PHONEPE
 require("dotenv").config();
 const express = require("express");
 const crypto = require("crypto");
@@ -84,9 +85,7 @@ const BASE_URL = process.env.PHONEPE_BASE_URL;
 const SERVER_URL = process.env.DOMAIN_URL;
 
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+admin.initializeApp({credential: admin.credential.cert(serviceAccount),}); //initialize firebase admin
 
 const db = admin.firestore();
 // ✅ CREATE ORDER (PHONEPE)
@@ -94,7 +93,7 @@ app.post("/create-order", async (req, res) => {
   try {
     console.log("🔵 STEP 1: Create Order Started");
 
-    const { amount } = req.body;
+    const { amount, userId } = req.body;
 
     console.log("🔵 STEP 2: Amount received =", amount);
 
@@ -104,9 +103,9 @@ app.post("/create-order", async (req, res) => {
     const payload = {
       merchantId: MERCHANT_ID,
       merchantTransactionId: txnId,
-      merchantUserId: "USER123",
+      merchantUserId: "USER123" || userId,
       amount: amount * 100,
-      redirectUrl: `${SERVER_URL}/redirect`,
+      //redirectUrl: `${SERVER_URL}/redirect`,
       callbackUrl: `${SERVER_URL}/webhook`,
       paymentInstrument: { type: "PAY_PAGE" }
     };
@@ -118,7 +117,7 @@ app.post("/create-order", async (req, res) => {
 
     const base64Payload = Buffer.from(jsonString).toString("base64");
     console.log("🔵 STEP 6: Base64 payload =", base64Payload);
-
+ 
     const stringToHash = base64Payload + "/pg/v1/pay" + SALT_KEY;
     console.log("🔵 STEP 7: String to hash =", stringToHash);
 
@@ -128,21 +127,23 @@ app.post("/create-order", async (req, res) => {
     const checksum = hash + "###" + SALT_INDEX;
     console.log("🔵 STEP 9: Checksum =", checksum);
 
-    const url = `${BASE_URL}/apis/hermes/pg/v1/pay`;
+    const url = `${BASE_URL}/pg/v1/pay`;
+    
     console.log("🔵 STEP 10: Final URL =", url);
 
     console.log("🔵 STEP 11: Sending request to PhonePe...");
 
-    const response = await axios.post(
-      url,
-      { request: base64Payload },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-VERIFY": checksum
-        }
-      }
-    );
+
+const response = await axios.post(
+  url,
+  { request: base64Payload },
+  {
+    headers: {
+      "Content-Type": "application/json",
+      "X-VERIFY": checksum
+    }
+  }
+); 
 
     console.log("🟢 STEP 12: PhonePe Response =", response.data);
 
@@ -152,8 +153,8 @@ app.post("/create-order", async (req, res) => {
     console.log("🟢 STEP 13: Redirect URL =", redirectUrl);
 
     res.json({
-      orderId: txnId,
-      url: redirectUrl
+      id: txnId,
+      paymentUrl: redirectUrl
     });
 
   } catch (e) {
