@@ -365,29 +365,26 @@ app.post("/create-order", async (req, res) => {
     const txnId = "TXN_" + Date.now();
 
     if (!amount || !userId) {
-      console.error(`!amount || !userId no daaata ${amount} || ${userId}`);
-
+      console.error(`❌ Missing data: ${amount} | ${userId}`);
       return res.status(400).json({ error: "Missing fields" });
     }
-    try {
-      // ✅ STORE ORDER IN FIREBASE
-      await db
-        .collection("users")
-        .doc(userId)
-        .collection("orders")
-        .doc(txnId)
-        .set({
-          txnId,
-          amount,
-          status: "PENDING",
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
 
-      console.log("✅ FIRESTORE WRITE SUCCESS");
+    // 🔥 STEP 1: STORE IN GLOBAL ORDERS COLLECTION
+    try {
+      await db.collection("orders").doc(txnId).set({
+        txnId,
+        userId,
+        amount,
+        status: "PENDING",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      console.log("✅ GLOBAL ORDER CREATED");
     } catch (dbError) {
       console.log("🔥 FIRESTORE ERROR:", dbError);
     }
 
+    // 🔥 STEP 2: PHONEPE PAYLOAD
     const payload = {
       merchantId: MERCHANT_ID,
       merchantTransactionId: txnId,
@@ -398,9 +395,7 @@ app.post("/create-order", async (req, res) => {
       paymentInstrument: { type: "PAY_PAGE" },
     };
 
-    const base64Payload = Buffer.from(JSON.stringify(payload)).toString(
-      "base64",
-    );
+    const base64Payload = Buffer.from(JSON.stringify(payload)).toString("base64");
 
     const stringToHash = base64Payload + "/pg/v1/pay" + SALT_KEY;
 
@@ -409,17 +404,15 @@ app.post("/create-order", async (req, res) => {
       "###" +
       SALT_INDEX;
 
-    const url = `${BASE_URL}/pg/v1/pay`;
-
     const response = await axios.post(
-      url,
+      `${BASE_URL}/pg/v1/pay`,
       { request: base64Payload },
       {
         headers: {
           "Content-Type": "application/json",
           "X-VERIFY": checksum,
         },
-      },
+      }
     );
 
     const paymentUrl =
@@ -455,12 +448,12 @@ app.post("/webhook", async (req, res) => {
     if (status === "COMPLETED") finalStatus = "SUCCESS";
     else if (status === "FAILED") finalStatus = "FAILED";
 
-    // 🔥 STEP 1: get order from GLOBAL collection
+    // STEP 1: get order from GLOBAL collection
     const orderRef = db.collection("orders").doc(txnId);
     const orderSnap = await orderRef.get();
 
     if (!orderSnap.exists) {
-      console.log("❌ Order not found for txn:", txnId);
+      console.log("Order not found for txn:", txnId);
       return res.sendStatus(200);
     }
 
