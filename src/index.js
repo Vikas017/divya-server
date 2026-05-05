@@ -365,6 +365,8 @@ app.post("/create-order", async (req, res) => {
     const txnId = "TXN_" + Date.now();
 
     if (!amount || !userId) {
+      console.error(`!amount || !userId no daaata ${amount} || ${userId}`);
+
       return res.status(400).json({ error: "Missing fields" });
     }
     try {
