@@ -360,7 +360,7 @@ const db = admin.firestore();
 // =======================================
 app.post("/create-order", async (req, res) => {
   try {
-    const { amount, userId = "USER123" } = req.body;
+    const { amount, userId } = req.body;
 
     const txnId = "TXN_" + Date.now();
 
@@ -528,7 +528,7 @@ app.post("/webhook", async (req, res) => {
 
     const txnId = decoded?.data?.merchantTransactionId;
     const status = decoded?.data?.state;
-    const userId = decoded?.data?.merchantUserId || "USER123";
+    const userId = decoded?.data?.merchantUserId;
 
     if (!txnId) return res.status(400).send("Invalid");
 
