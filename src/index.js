@@ -272,7 +272,7 @@ const crypto = require("crypto");
 const cors = require("cors");
 const axios = require("axios");
 const admin = require("firebase-admin");
-const serviceAccount = require("../serviceAccountKey.json");
+const serviceAccount = require("./serviceAccountKey.json");
 
 const app = express();
 app.use(express.json());
