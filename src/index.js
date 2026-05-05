@@ -433,10 +433,8 @@ app.post("/create-order", async (req, res) => {
 // =======================================
 app.post("/webhook", async (req, res) => {
   try {
-    const base64Response = req.body.response;
-
     const decoded = JSON.parse(
-      Buffer.from(base64Response, "base64").toString("utf-8")
+      Buffer.from(req.body.response, "base64").toString("utf-8")
     );
 
     const txnId = decoded?.data?.merchantTransactionId;
@@ -448,44 +446,20 @@ app.post("/webhook", async (req, res) => {
     if (status === "COMPLETED") finalStatus = "SUCCESS";
     else if (status === "FAILED") finalStatus = "FAILED";
 
-    // STEP 1: get order from GLOBAL collection
-    const orderRef = db.collection("orders").doc(txnId);
-    const orderSnap = await orderRef.get();
-
-    if (!orderSnap.exists) {
-      console.log("Order not found for txn:", txnId);
-      return res.sendStatus(200);
-    }
-
-    const orderData = orderSnap.data();
-    const userId = orderData.userId;
-
-    // 🔥 STEP 2: update global order
-    await orderRef.update({
+    // 🔥 UPDATE SINGLE GLOBAL ORDER
+    await db.collection("orders").doc(txnId).update({
       status: finalStatus,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 🔥 STEP 3: update user-specific order
-    await db
-      .collection("users")
-      .doc(userId)
-      .collection("orders")
-      .doc(txnId)
-      .update({
-        status: finalStatus,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-    console.log("✅ WEBHOOK UPDATED:", txnId, finalStatus);
+    console.log("✅ ORDER UPDATED:", txnId, finalStatus);
 
     res.sendStatus(200);
   } catch (err) {
     console.log("❌ WEBHOOK ERROR:", err.message);
     res.sendStatus(500);
   }
-});
-// =======================================
+});// =======================================
 // VERIFY PAYMENT
 // =======================================
 app.get("/verify-payment/:txnId", async (req, res) => {
