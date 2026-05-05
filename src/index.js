@@ -301,13 +301,35 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // =======================================
-// ✅ CREATE ORDER
+// CREATE ORDER
 // =======================================
 app.post("/create-order", async (req, res) => {
   try {
     const { amount, userId = "USER123" } = req.body;
 
     const txnId = "TXN_" + Date.now();
+
+    if (!amount || !userId) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+    try {
+      // ✅ STORE ORDER IN FIREBASE
+      await db
+        .collection("users")
+        .doc(userId)
+        .collection("orders")
+        .doc(txnId)
+        .set({
+          txnId,
+          amount,
+          status: "PENDING",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+      console.log("✅ FIRESTORE WRITE SUCCESS");
+    } catch (dbError) {
+      console.log("🔥 FIRESTORE ERROR:", dbError);
+    }
 
     const payload = {
       merchantId: MERCHANT_ID,
@@ -346,19 +368,6 @@ app.post("/create-order", async (req, res) => {
     const paymentUrl =
       response.data?.data?.instrumentResponse?.redirectInfo?.url;
 
-    // ✅ STORE ORDER IN FIREBASE
-    await db
-      .collection("users")
-      .doc(userId)
-      .collection("orders")
-      .doc(txnId)
-      .set({
-        txnId,
-        amount,
-        status: "PENDING",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
     res.json({
       id: txnId,
       paymentUrl,
@@ -370,7 +379,7 @@ app.post("/create-order", async (req, res) => {
 });
 
 // =======================================
-// ✅ VERIFY PAYMENT
+// VERIFY PAYMENT
 // =======================================
 app.get("/verify-payment/:txnId", async (req, res) => {
   try {
@@ -384,7 +393,7 @@ app.get("/verify-payment/:txnId", async (req, res) => {
 
     if (!userId) {
       return res.status(400).json({
-        error: "userId is required"
+        error: "userId is required",
       });
     }
 
@@ -392,10 +401,7 @@ app.get("/verify-payment/:txnId", async (req, res) => {
 
     const stringToHash = endpoint + SALT_KEY;
 
-    const hash = crypto
-      .createHash("sha256")
-      .update(stringToHash)
-      .digest("hex");
+    const hash = crypto.createHash("sha256").update(stringToHash).digest("hex");
 
     const checksum = hash + "###" + SALT_INDEX;
 
@@ -421,7 +427,8 @@ app.get("/verify-payment/:txnId", async (req, res) => {
     console.log("🟢 FINAL STATUS:", finalStatus);
 
     // ✅ DIRECT UPDATE (BEST APPROACH)
-    await db.collection("users")
+    await db
+      .collection("users")
       .doc(userId)
       .collection("orders")
       .doc(txnId)
@@ -441,7 +448,6 @@ app.get("/verify-payment/:txnId", async (req, res) => {
       status: finalStatus,
       raw: response.data,
     });
-
   } catch (err) {
     console.log("\n================ VERIFY ERROR ================");
     console.log("❌ MESSAGE:", err.message);
@@ -453,7 +459,7 @@ app.get("/verify-payment/:txnId", async (req, res) => {
 });
 
 // =======================================
-// ✅ WEBHOOK (IMPORTANT)
+// WEBHOOK (IMPORTANT)
 // =======================================
 app.post("/webhook", async (req, res) => {
   try {
