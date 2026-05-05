@@ -272,7 +272,7 @@ const crypto = require("crypto");
 const cors = require("cors");
 const axios = require("axios");
 const admin = require("firebase-admin");
-const serviceAccount = require("./serviceAccountKey.json");
+//const serviceAccount = require("../serviceAccountKey.json");
 
 const app = express();
 app.use(express.json());
@@ -287,16 +287,28 @@ app.use((req, res, next) => {
   next();
 });
 
-// 🔑 ENV
+// ENV
 const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID;
 const SALT_KEY = process.env.PHONEPE_SALT_KEY;
 const SALT_INDEX = process.env.PHONEPE_SALT_INDEX;
 const BASE_URL = process.env.PHONEPE_BASE_URL;
 const SERVER_URL = process.env.DOMAIN_URL;
 
-// 🔥 FIREBASE INIT
+// FIREBASE INIT
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert({
+    type: process.env.SERVICE_ACCOUNT_TYPE,
+    project_id: process.env.SERVICE_PROJECT_ID,
+    private_key_id: process.env.SERVICE_PRIVATE_KEY_ID,
+    private_key: process.env.SERVICE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    client_email: process.env.SERVICE_CLIENT_EMAIL,
+    client_id: process.env.SERVICE_CLIENT_ID,
+    auth_uri: process.env.SERVICE_AUTH_URL,
+    token_uri: process.env.SERVICE_TOKEN_URI,
+    auth_provider_x509_cert_url: process.env.SERVICE_AUTH_PROVIDER_X509_CERT_URL,
+    client_x509_cert_url: process.env.SERVICE_CLIENT_X509_CERT_URL,
+    universe_domain: process.env.SERVICE_UNIVERSE_DOMAIN,
+  }),
 });
 const db = admin.firestore();
 
