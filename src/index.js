@@ -436,6 +436,63 @@ app.post("/create-order", async (req, res) => {
 });
 
 // =======================================
+// WEBHOOK (IMPORTANT)
+// =======================================
+app.post("/webhook", async (req, res) => {
+  try {
+    const base64Response = req.body.response;
+
+    const decoded = JSON.parse(
+      Buffer.from(base64Response, "base64").toString("utf-8")
+    );
+
+    const txnId = decoded?.data?.merchantTransactionId;
+    const status = decoded?.data?.state;
+
+    if (!txnId) return res.status(400).send("Invalid");
+
+    let finalStatus = "PENDING";
+    if (status === "COMPLETED") finalStatus = "SUCCESS";
+    else if (status === "FAILED") finalStatus = "FAILED";
+
+    // 🔥 STEP 1: get order from GLOBAL collection
+    const orderRef = db.collection("orders").doc(txnId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      console.log("❌ Order not found for txn:", txnId);
+      return res.sendStatus(200);
+    }
+
+    const orderData = orderSnap.data();
+    const userId = orderData.userId;
+
+    // 🔥 STEP 2: update global order
+    await orderRef.update({
+      status: finalStatus,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 🔥 STEP 3: update user-specific order
+    await db
+      .collection("users")
+      .doc(userId)
+      .collection("orders")
+      .doc(txnId)
+      .update({
+        status: finalStatus,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    console.log("✅ WEBHOOK UPDATED:", txnId, finalStatus);
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.log("❌ WEBHOOK ERROR:", err.message);
+    res.sendStatus(500);
+  }
+});
+// =======================================
 // VERIFY PAYMENT
 // =======================================
 app.get("/verify-payment/:txnId", async (req, res) => {
@@ -515,52 +572,6 @@ app.get("/verify-payment/:txnId", async (req, res) => {
   }
 });
 
-// =======================================
-// WEBHOOK (IMPORTANT)
-// =======================================
-app.post("/webhook", async (req, res) => {
-  try {
-    const base64Response = req.body.response;
-
-    const decoded = JSON.parse(
-      Buffer.from(base64Response, "base64").toString("utf-8"),
-    );
-
-    console.log("🟢 DECODED WEBHOOK:", decoded);
-
-    const txnId = decoded?.data?.merchantTransactionId;
-    const status = decoded?.data?.state;
-    const userId = decoded?.data?.merchantUserId;
-
-    if (!txnId) return res.status(400).send("Invalid");
-
-    let finalStatus = "PENDING";
-
-    if (status === "COMPLETED") finalStatus = "SUCCESS";
-    else if (status === "FAILED") finalStatus = "FAILED";
-
-    await db
-      .collection("users")
-      .doc(userId)
-      .collection("orders")
-      .doc(txnId)
-      .set(
-        {
-          txnId,
-          status: finalStatus,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-    console.log("✅ WEBHOOK UPDATED:", txnId, finalStatus);
-
-    res.sendStatus(200);
-  } catch (err) {
-    console.log("❌ WEBHOOK ERROR:", err.message);
-    res.sendStatus(500);
-  }
-});
 
 // =======================================
 // 🚀 START SERVER
